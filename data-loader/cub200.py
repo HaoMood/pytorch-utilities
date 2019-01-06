@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""This module is served as torchvision.datasets to load CUB200-2011.
+"""CUB200-2011 dataset for PyTorch loading.
 
 CUB200-2011 dataset has 11,788 images of 200 bird species. The project page
 is as follows.

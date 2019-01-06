@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Caltech-101 dataset.
+"""Caltech-101 dataset for PyTorch loading.
 
 Caltech-101 dataset (Li et al., 2007) contains from 31 to 800 images per
 category. Most images are medium resolution, i.e., about 300*300 pixels.

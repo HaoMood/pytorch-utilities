@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""FER2013 dataset.
+"""FER2013 dataset for PyTorch loading.
 
 Fer2013 dataset (Goodfellow et al., 2015) has 28,709 training images, 3,589
 public test images, and 3,589 final test images. Each image has shape 1*48*48.

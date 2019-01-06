@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""This module is served as torchvision.datasets to load Aircraft dataset.
+"""Aircraft dataset for PyTorch loading.
 
 This file is modified from:
     https://github.com/vishwakftw/vision.
