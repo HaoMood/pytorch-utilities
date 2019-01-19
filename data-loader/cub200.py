@@ -32,15 +32,15 @@ torch.cuda.manual_seed_all(0)
 torch.backends.cudnn.benchmark = True
 
 
-__all__ = ['CUB200', 'CUB200ReLU']
+__all__ = ['CUB200', 'CUB200ReLU43']
 __author__ = 'Hao Zhang'
 __copyright__ = '2018 LAMDA'
 __date__ = '2018-01-09'
 __email__ = 'zhangh0214@gmail.com'
 __license__ = 'CC BY-SA 3.0'
 __status__ = 'Development'
-__updated__ = '2018-05-23'
-__version__ = '14.1'
+__updated__ = '2019-01-11'
+__version__ = '2.0'
 
 
 class CUB200(torch.utils.data.Dataset):
@@ -208,46 +208,117 @@ class CUB200(torch.utils.data.Dataset):
         return len(self._test_instances)
 
 
-class CUB200ReLU(torch.utils.data.Dataset):
-    """CUB200 relu5-3 dataset.
+class CUB200ReLU43(torch.utils.data.Dataset):
+    """CUB200 relu4-3 dataset.
 
     Args:
         _root, str: Root directory of the dataset.
-        _train, bool: Load train/test data.
-        _train_data, list<torch.Tensor>.
+        _train, bool: Load train/validation data.
+        _train_images, list<torch.Tensor>.
         _train_labels, list<int>.
-        _test_data, list<torch.Tensor>.
-        _test_labels, list<int>.
+        _val_images, list<torch.Tensor>.
+        _val_labels, list<int>.
     """
-    def __init__(self, root, train=True):
+    def __init__(self, root, train=True, model_path=None):
         """Load the dataset.
 
         Args
             root, str: Root directory of the dataset.
-            train, bool [True]: Load train/test data.
+            train, bool [True]: Load train/validation data.
         """
         self._root = os.path.expanduser(root)  # Replace ~ by the complete dir
         self._train = train
 
-        if (os.path.isfile(os.path.join(self._root, 'relu5-3', 'train.pth'))
-            and os.path.isfile(os.path.join(self._root, 'relu5-3',
-                                            'test.pth'))):
-            print('CUB200 relu5-3 features already prepared.')
-        else:
-            raise RuntimeError('CUB200 relu5-3 Dataset not found.'
-                               'You need to prepare it in advance.')
+        train_path = os.path.join(self._root,
+                                  'ThiNet_Tiny_AutoPruner_relu4-3_train.pth')
+        val_path = os.path.join(self._root,
+                                'ThiNet_Tiny_AutoPruner_relu4-3_val.pth')
+        if not os.path.isfile(train_path) or not os.path.isfile(val_path):
+            self._prepareDataset(model_path)
 
         # Now load the picked data.
         if self._train:
-            self._train_instances, self._train_labels = torch.load(
-                os.path.join(self._root, 'relu5-3', 'train.pth'))
-            assert (len(self._train_instances) == 5994
+            self._train_images, self._train_labels = torch.load(train_path)
+            assert (len(self._train_images) == 5994
                     and len(self._train_labels) == 5994)
         else:
-            self._test_instances, self._test_labels = torch.load(
-                os.path.join(self._root, 'relu5-3', 'test.pth'))
-            assert (len(self._test_instances) == 5794
-                    and len(self._test_labels) == 5794)
+            self._val_images, self._val_labels = torch.load(val_path)
+            assert (len(self._val_images) == 5794
+                    and len(self._val_labels) == 5794)
+
+    def _prepareDataset(self, model_path):
+        """Forward all train/validation images and save their ReLU4-3 feature
+        onto disk.
+
+        Args:
+            model_path, str.
+        """
+        import torchvision
+        import thinet_autopruner
+
+        print('Prepare CUB-200 ThiNet-Tiny (AutoPruner) ReLU4-3 dataset.')
+        assert os.path.isfile(model_path)
+        model = thinet_autopruner.ThiNetAutoPrunerTiny(
+            model_path=model_path, num_classes=200).cuda()
+        model.phase = 'extract'
+        model.eval()
+        transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(224),
+            torchvision.transforms.CenterCrop(224),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize(mean=(0.485, 0.456, 0.406),
+                                             std=(0.229, 0.224, 0.225)),
+        ])
+        train_data = CUB200(
+            root=self._root, train=True, transform=transform)
+        val_data = CUB200(
+            root=self._root, train=False, transform=transform)
+        train_loader = torch.utils.data.DataLoader(
+            train_data, batch_size=1, shuffle=False, num_workers=0,
+            pin_memory=False)
+        val_loader = torch.utils.data.DataLoader(
+            val_data, batch_size=1, shuffle=False, num_workers=0,
+            pin_memory=False)
+
+        with torch.no_grad():
+            train_images, train_labels = self._prepareDatasetHelper(
+                is_train=True, model=model, loader=train_loader)
+            val_images, val_labels = self._prepareDatasetHelper(
+                is_train=False, model=model, loader=val_loader)
+
+        train_path = os.path.join(self._root,
+                                  'ThiNet_Tiny_AutoPruner_relu4-3_train.pth')
+        val_path = os.path.join(self._root,
+                                'ThiNet_Tiny_AutoPruner_relu4-3_val.pth')
+        torch.save((train_images, train_labels), train_path)
+        torch.save((val_images, val_labels), val_path)
+
+    def _prepareDatasetHelper(self, is_train, model, loader):
+        """Extract ReLU4-3 activation.
+
+        This is a help
+
+        Args:
+            is_train, bool: Train/Validation.
+            model, torch.nn.Module.
+            loader, torch.utils.data.DataLoader: Train/Validation loader.
+
+        Returns:
+            all_images, list<torch.Tensor<143*28*28>>.
+            all_labels, list<int>.
+        """
+        import tqdm
+
+        all_images = []
+        all_labels = []
+        for instances, labels in tqdm.tqdm(
+                loader, desc='%s' % 'train' if is_train else 'val. '):
+            all_labels.append(labels.item())
+            instances = instances.cuda()
+            instances = model(instances)
+            assert instances.size() == (1, 143, 28, 28)
+            all_images.append(instances[0].cpu())
+        return all_images, all_labels
 
     def __getitem__(self, index):
         """
@@ -255,12 +326,12 @@ class CUB200ReLU(torch.utils.data.Dataset):
             index, int: Index.
 
         Returns:
-            feature, torch.Tensor: relu5-3 feature of the given index.
+            feature, torch.Tensor: relu4-3 feature of the given index.
             target, int: target of the given index.
         """
         if self._train:
-            return self._train_instances[index], self._train_labels[index]
-        return self._test_instances[index], self._test_labels[index]
+            return self._train_images[index], self._train_labels[index]
+        return self._val_images[index], self._val_labels[index]
 
     def __len__(self):
         """Length of the dataset.
@@ -269,5 +340,5 @@ class CUB200ReLU(torch.utils.data.Dataset):
             length, int: Length of the dataset.
         """
         if self._train:
-            return len(self._train_instances)
-        return len(self._test_instances)
+            return len(self._train_images)
+        return len(self._val_images)
